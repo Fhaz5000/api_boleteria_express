@@ -181,7 +181,7 @@ app.post("/api/boleto/comprar", async (req,res)=>{
    },
    {
     $set:{
-     Estado:2,
+     Estado:3,
      Nombre:nombre,
      Identificacion:identificacion,
      FechaVenta:new Date()
