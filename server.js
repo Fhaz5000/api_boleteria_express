@@ -220,47 +220,53 @@ app.post("/api/boleto/comprar", async (req,res)=>{
 //////////////////////////////////////////////////////
 
 app.get("/api/sorteo/hoy", async (req, res) => {
-
+ 
   try {
-
-    // Rango del día actual en UTC (00:00:00 → 23:59:59)
-    const hoy = new Date()
-
-    const inicio = new Date(hoy)
-    inicio.setUTCHours(0, 0, 0, 0)
-
-    const fin = new Date(hoy)
-    fin.setUTCHours(23, 59, 59, 999)
-
+ 
+    const OFFSET_COL = 5 * 60 * 60 * 1000 // UTC-5 en milisegundos
+ 
+    // Hora actual en Colombia
+    const ahora = new Date(Date.now() - OFFSET_COL)
+ 
+    // Inicio del día colombiano → 00:00:00 COT → 05:00:00 UTC
+    const inicioCOL = new Date(ahora)
+    inicioCOL.setUTCHours(0, 0, 0, 0)
+    const inicioUTC = new Date(inicioCOL.getTime() + OFFSET_COL)
+ 
+    // Fin del día colombiano → 23:59:59 COT → 04:59:59 UTC del día siguiente
+    const finCOL = new Date(ahora)
+    finCOL.setUTCHours(23, 59, 59, 999)
+    const finUTC = new Date(finCOL.getTime() + OFFSET_COL)
+ 
     const sorteo = await Sorteo.findOne({
-      FechaEvento:    { $gte: inicio, $lte: fin },
-      Activo:         true,
-      EstaEliminado:  false
+      FechaEvento:   { $gte: inicioUTC, $lte: finUTC },
+      Activo:        true,
+      EstaEliminado: false
     })
-
+ 
     if (!sorteo) {
       return res.status(404).json({
-        ok: false,
+        ok:      false,
         mensaje: "No hay sorteo programado para hoy"
       })
     }
-
+ 
     res.json({
       ok: true,
       sorteo
     })
-
+ 
   } catch (err) {
-
+ 
     console.log(err)
-
+ 
     res.status(500).json({
-      ok: false,
+      ok:      false,
       mensaje: "Error del servidor"
     })
-
+ 
   }
-
+ 
 })
 
 //////////////////////////////////////////////////////
