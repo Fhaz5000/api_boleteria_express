@@ -11,4 +11,4 @@ const SorteoSchema = new mongoose.Schema({
   EstaEliminado:        Boolean
 }, { collection: "sorteos" })   // ajusta el nombre de la colección si es diferente
 
-module.exports = mongoose.model("Sorteo", SorteoSchema)
+module.exports = mongoose.model("sorteos", SorteoSchema)
