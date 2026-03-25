@@ -244,7 +244,6 @@ app.get("/api/sorteo/hoy", async (req, res) => {
 
     const sorteo = await Sorteo.findOne({
       FechaEvento:   { $gte: inicioUTC, $lte: finUTC },
-      Activo:        true,
       EstaEliminado: false
     })
 
