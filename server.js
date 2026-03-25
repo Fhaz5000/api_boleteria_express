@@ -6,7 +6,7 @@ const cors = require("cors")
 const crypto = require("crypto")
 
 const Boleto = require("./src/models/Boleto")
-
+const Sorteo = require("./src/models/Sorteo") 
 const app = express()
 
 app.use(cors())
@@ -215,7 +215,53 @@ app.post("/api/boleto/comprar", async (req,res)=>{
  }
 
 })
+//////////////////////////////////////////////////////
+// SORTEO DEL DÍA DE HOY
+//////////////////////////////////////////////////////
 
+app.get("/api/sorteo/hoy", async (req, res) => {
+
+  try {
+
+    // Rango del día actual en UTC (00:00:00 → 23:59:59)
+    const hoy = new Date()
+
+    const inicio = new Date(hoy)
+    inicio.setUTCHours(0, 0, 0, 0)
+
+    const fin = new Date(hoy)
+    fin.setUTCHours(23, 59, 59, 999)
+
+    const sorteo = await Sorteo.findOne({
+      FechaEvento:    { $gte: inicio, $lte: fin },
+      Activo:         true,
+      EstaEliminado:  false
+    })
+
+    if (!sorteo) {
+      return res.status(404).json({
+        ok: false,
+        mensaje: "No hay sorteo programado para hoy"
+      })
+    }
+
+    res.json({
+      ok: true,
+      sorteo
+    })
+
+  } catch (err) {
+
+    console.log(err)
+
+    res.status(500).json({
+      ok: false,
+      mensaje: "Error del servidor"
+    })
+
+  }
+
+})
 
 //////////////////////////////////////////////////////
 // TEST API
