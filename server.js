@@ -1,293 +1,75 @@
 require("dotenv").config()
 
 const express = require("express")
-const mongoose = require("mongoose")
 const cors = require("cors")
-const crypto = require("crypto")
 
-const Boleto = require("./src/models/Boleto")
-const Sorteo = require("./src/models/Sorteo") 
+const { pool } = require("./src/db")
+const { requiereSesion } = require("./src/auth")
+
+for(const variable of ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME", "HMAC_KEY", "JWT_SECRET"]){
+ if(!process.env[variable]) console.log(`⚠ Falta la variable de entorno ${variable}`)
+}
+
 const app = express()
 
 app.use(cors())
-app.use(express.json())
+// La generación de boletería envía hasta 10.000 números en una sola petición
+app.use(express.json({ limit: "20mb" }))
 
 const PORT = process.env.PORT || 3010
-const HMAC_KEY = process.env.HMAC_KEY
-
-// Conexión MongoDB
-mongoose.connect(process.env.MONGO_URI)
-.then(()=>console.log("MongoDB conectado"))
-.catch(err=>console.log("Error MongoDB:",err))
-
-
-/*
-VALIDAR TOKEN GENERADO EN .NET
-Formato:
-{boletaId}|{sorteoId}|{expira}|{firma}
-*/
-
-function validarToken(token){
-
- try{
-
-  const partes = token.split("|")
-
-  if(partes.length !== 4){
-   return {valido:false,mensaje:"Token inválido"}
-  }
-
-  const boletaId = partes[0]
-  const sorteoId = partes[1]
-  const expira = partes[2]
-  const firma = partes[3]
-
-  const payload = `${boletaId}|${sorteoId}|${expira}`
-
-  const hmac = crypto.createHmac("sha256", HMAC_KEY)
-  const hash = hmac.update(payload).digest()
-
-  const firmaCalculada = hash
-   .slice(0,16)
-   .toString("base64")
-   .replace(/\+/g,"-")
-   .replace(/\//g,"_")
-   .replace(/=/g,"")
-
-  if(firmaCalculada !== firma){
-   return {valido:false,mensaje:"Firma inválida"}
-  }
-
-  const ahora = Math.floor(Date.now()/1000)
-
-  if(ahora > expira){
-   return {valido:false,mensaje:"Token expirado"}
-  }
-
-  return {
-   valido:true,
-   boletaId,
-   sorteoId
-  }
-
- }catch(err){
-  return {valido:false,mensaje:"Error validando token"}
- }
-
-}
-
 
 //////////////////////////////////////////////////////
-// VALIDAR BOLETO
+// RUTAS PÚBLICAS (web de validación QR)
 //////////////////////////////////////////////////////
 
-app.post("/api/boleto/validar", async (req,res)=>{
-
- try{
-
-  const token = req.body?.token
-
-  if(!token){
-   return res.status(400).json({
-    valido:false,
-    mensaje:"Token requerido"
-   })
-  }
-
-  const resultado = validarToken(token)
-  if(!resultado.valido){
-   return res.json(resultado)
-  }
-
-  // validar ObjectId
-  if(!mongoose.Types.ObjectId.isValid(resultado.boletaId)){
-   return res.json({
-    valido:false,
-    mensaje:"Id de boleta inválido"
-   })
-  }
-
-  const boleto = await Boleto.findById(resultado.boletaId)
-
-  if(!boleto){
-   return res.json({
-    valido:false,
-    mensaje:"Boleto no existe"
-   })
-  }
-
-  if(boleto.Estado !== 1){
-   return res.json({
-    valido:false,
-    mensaje:"Boleto no disponible"
-   })
-  }
-
-  res.json({
-   valido:true,
-   mensaje:"Boleto disponible",
-   boleto
-  })
-
- }catch(err){
-
-  console.log(err)
-
-  res.status(500).json({
-   valido:false,
-   mensaje:"Error del servidor"
-  })
-
- }
-
-})
-
+app.use("/api", require("./src/rutas/publico"))
+app.use("/api/auth", require("./src/rutas/sesion"))
 
 //////////////////////////////////////////////////////
-// COMPRAR BOLETO
+// RUTAS DE LA APP .NET (requieren iniciar sesión)
 //////////////////////////////////////////////////////
 
-app.post("/api/boleto/comprar", async (req,res)=>{
-
- try{
-
-  const {token,nombre,identificacion} = req.body
-
-  if(!token){
-   return res.status(400).json({
-    valido:false,
-    mensaje:"Token requerido"
-   })
-  }
-
-  const resultado = validarToken(token)
-
-  if(!resultado.valido){
-   return res.json(resultado)
-  }
-
-  if(!mongoose.Types.ObjectId.isValid(resultado.boletaId)){
-   return res.json({
-    valido:false,
-    mensaje:"Id inválido"
-   })
-  }
-
-  // actualización atómica
-  const boleto = await Boleto.findOneAndUpdate(
-   {
-    _id:resultado.boletaId,
-    Estado:1
-   },
-   {
-    $set:{
-     Estado:3,
-     Nombre:nombre,
-     Identificacion:identificacion,
-     FechaVenta:new Date()
-    }
-   },
-   {new:true}
-  )
-
-  if(!boleto){
-   return res.json({
-    valido:false,
-    mensaje:"Boleto ya vendido o no disponible"
-   })
-  }
-
-  res.json({
-   valido:true,
-   mensaje:"Boleto vendido",
-   boleto
-  })
-
- }catch(err){
-
-  console.log(err)
-
-  res.status(500).json({
-   valido:false,
-   mensaje:"Error del servidor"
-  })
-
- }
-
-})
-//////////////////////////////////////////////////////
-// SORTEO DEL DÍA DE HOY
-//////////////////////////////////////////////////////
-
-app.get("/api/sorteo/hoy", async (req, res) => {
-
-  try {
-
-    const OFFSET_COL = 5 * 60 * 60 * 1000
-
-    const ahora = new Date(Date.now() - OFFSET_COL)
-
-    const inicioCOL = new Date(ahora)
-    inicioCOL.setUTCHours(0, 0, 0, 0)
-    const inicioUTC = new Date(inicioCOL.getTime() + OFFSET_COL)
-
-    const finCOL = new Date(ahora)
-    finCOL.setUTCHours(23, 59, 59, 999)
-    const finUTC = new Date(finCOL.getTime() + OFFSET_COL)
-
-    // 🔍 DEBUG: ver qué rango está buscando
-    console.log("Buscando entre:", inicioUTC, "y", finUTC)
-
-    // 🔍 DEBUG: traer TODOS los sorteos sin filtros para ver qué hay
-    const todos = await Sorteo.find({})
-    console.log("Todos los sorteos en BD:", JSON.stringify(todos, null, 2))
-
-    const sorteo = await Sorteo.findOne({
-      FechaEvento:   { $gte: inicioUTC, $lte: finUTC },
-      EstaEliminado: false
-    })
-
-    if (!sorteo) {
-      return res.status(404).json({
-        ok:      false,
-        mensaje: "No hay sorteo programado para hoy",
-        // 🔍 DEBUG: devolver el rango que buscó
-        debug: {
-          inicioUTC,
-          finUTC,
-          totalEnBD: todos.length,
-          fechasEnBD: todos.map(s => ({
-            id:            s._id,
-            FechaEvento:   s.FechaEvento,
-            Activo:        s.Activo,
-            EstaEliminado: s.EstaEliminado
-          }))
-        }
-      })
-    }
-
-    res.json({ ok: true, sorteo })
-
-  } catch (err) {
-    console.log(err)
-    res.status(500).json({ ok: false, mensaje: "Error del servidor" })
-  }
-
-})
+app.use("/api/temas", requiereSesion, require("./src/rutas/temas"))
+app.use("/api/sorteos", requiereSesion, require("./src/rutas/sorteos"))
+app.use("/api/boletas", requiereSesion, require("./src/rutas/boletas"))
+app.use("/api/usuarios", requiereSesion, require("./src/rutas/usuarios"))
+app.use("/api/roles", requiereSesion, require("./src/rutas/roles"))
 
 //////////////////////////////////////////////////////
 // TEST API
 //////////////////////////////////////////////////////
 
-app.get("/", (req,res)=>{
+app.get("/", (req, res) => {
  res.send("API Boleteria funcionando")
 })
 
+// Verifica también la conexión con MySQL
+app.get("/api/salud", async (req, res) => {
+ try{
+  await pool.query("SELECT 1")
+  res.json({ ok: true, mysql: "conectado" })
+ }catch(err){
+  res.status(503).json({ ok: false, mysql: "sin conexión", mensaje: err.message })
+ }
+})
+
+//////////////////////////////////////////////////////
+// ERRORES
+//////////////////////////////////////////////////////
+
+app.use((req, res) => {
+ res.status(404).json({ mensaje: "Ruta no encontrada" })
+})
+
+app.use((err, req, res, next) => {
+ console.log(err)
+ res.status(500).json({ mensaje: "Error del servidor" })
+})
 
 //////////////////////////////////////////////////////
 // INICIAR SERVIDOR
 //////////////////////////////////////////////////////
 
-app.listen(PORT,()=>{
+app.listen(PORT, () => {
  console.log("Servidor corriendo en puerto " + PORT)
 })
