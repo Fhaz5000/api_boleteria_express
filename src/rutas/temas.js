@@ -6,7 +6,7 @@ const router = express.Router()
 
 const SELECT = `
  SELECT id AS Id, nombre AS Nombre, imagen AS Imagen, celular AS Celular,
-        color_texto AS ColorTexto, texto_posterior AS TextoPosterior,
+        color_texto AS ColorTexto,
         texto_principal AS TextoPrincipal, color_fondo AS ColorFondo,
         color_letra AS ColorLetra, activo AS Activo
  FROM temas`
@@ -14,7 +14,7 @@ const SELECT = `
 const tema = f => normalizar(f, { bools: ["Activo"] })
 
 function valores(t){
- return [t.Nombre, t.Imagen, t.Celular, t.ColorTexto, t.TextoPosterior,
+ return [t.Nombre, t.Imagen, t.Celular, t.ColorTexto,
          t.TextoPrincipal, t.ColorFondo, t.ColorLetra, t.Activo ? 1 : 0]
 }
 
@@ -46,16 +46,16 @@ router.get("/:id", async (req, res) => {
 
 router.post("/", requierePermiso("TEMAS_EDITAR"), async (req, res) => {
  const r = await query(
-  `INSERT INTO temas (nombre, imagen, celular, color_texto, texto_posterior,
+  `INSERT INTO temas (nombre, imagen, celular, color_texto,
                       texto_principal, color_fondo, color_letra, activo)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, valores(req.body))
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, valores(req.body))
  res.status(201).json({ Id: r.insertId })
 })
 
 router.put("/:id", requierePermiso("TEMAS_EDITAR"), async (req, res) => {
  await query(
   `UPDATE temas
-   SET nombre = ?, imagen = ?, celular = ?, color_texto = ?, texto_posterior = ?,
+   SET nombre = ?, imagen = ?, celular = ?, color_texto = ?,
        texto_principal = ?, color_fondo = ?, color_letra = ?, activo = ?
    WHERE id = ?`, [...valores(req.body), req.params.id])
  res.status(204).end()
