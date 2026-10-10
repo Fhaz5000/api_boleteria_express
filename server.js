@@ -34,6 +34,7 @@ app.use("/api/sorteos", requiereSesion, require("./src/rutas/sorteos"))
 app.use("/api/boletas", requiereSesion, require("./src/rutas/boletas"))
 app.use("/api/usuarios", requiereSesion, require("./src/rutas/usuarios"))
 app.use("/api/roles", requiereSesion, require("./src/rutas/roles"))
+app.use("/api/sistema", requiereSesion, require("./src/rutas/sistema"))
 
 //////////////////////////////////////////////////////
 // TEST API
